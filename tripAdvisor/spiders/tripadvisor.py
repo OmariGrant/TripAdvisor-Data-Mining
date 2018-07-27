@@ -11,8 +11,8 @@ class TripadvisorSpider(scrapy.Spider):
     def parse(self, response):
         links = response.css('div.listing_title a::attr(href)').extract() #list all links
         links = links[0:5] #set limit to 5 links
-        for page in links: #for all links
-            yield response.follow(page, self.parse_place) #follow the links and go to parse_place function
+        for index, page in enumerate(links): #for all links
+            yield response.follow(page, self.parse_place, meta={"url": str(page)}) #follow the links and go to parse_place function
 
 
     def parse_place(self, response):
@@ -26,20 +26,26 @@ class TripadvisorSpider(scrapy.Spider):
 
         def extract_city_postcode(query, isCity):
             time.sleep(1) #add a 1 second delay
-            cityPostcodeString = response.xpath(query).extract() #get city and postcode together
+            try:
+                cityPostcodeString = response.xpath(query).extract() #get city and postcode together
+            except:
+                cityPostcodeString = response.xpath('''//*[@id="taplc_attraction_detail_listing_0"]/div[2]/div[2]/span[3]''').extract() #get city and postcode together
             cityPostcodeString = str(cityPostcodeString) #convert to string
             cityPostcodeString = cityPostcodeString.split(' ') # split at each space
             if(isCity == True):
                 city = cityPostcodeString[0] #pick the first word
                 return city[2:] #cut the first two characters "['"
             else:
-                return cityPostcodeString[1] + ' ' + cityPostcodeString[2] # ad the first and second part of postcode together
+                postcode = cityPostcodeString[1] + ' ' + cityPostcodeString[2] # format postcode
+                postcode = postcode[:-1] #remove trailing comma
+                return postcode # ad the first and second part of postcode together
 
         ##function open the url in a browser and gets the url from the browser window
-        def extractUrl():
+        def extractUrl(page):
+
             driver = webdriver.Chrome(r'C:\Users\ogran\SynologyDrive\My Documents\development\Scrapy\chromedriver.exe') #location of chromium driver
                 # Optional argument, if not specified will search path.
-            driver.get('https://www.tripadvisor.co.uk/Attraction_Review-g186338-d10847106-Reviews-Camden_Assembly-London_England.html'); #url to get
+            driver.get('https://www.tripadvisor.co.uk/' + page); #url to get
             time.sleep(4) # Let the user actually see something!
 
             try:
@@ -57,12 +63,11 @@ class TripadvisorSpider(scrapy.Spider):
             driver.quit() #close the window
             return url
 
-
         yield { #results to get and run under extract funtion
             'Name': extract_with_xpath('//*[@id="HEADING"]/text()'),
             'Address': extract_with_xpath('//*[@id="taplc_location_detail_header_attractions_0"]/div[2]/div/div[1]/span[2]/text()'),
             'City': extract_city_postcode('//*[@id="taplc_location_detail_header_attractions_0"]/div[2]/div/div[1]/span[3]/text()', True),
             'Post Code': extract_city_postcode('//*[@id="taplc_location_detail_header_attractions_0"]/div[2]/div/div[1]/span[3]/text()', False),
             'Phone number': extract_with_xpath('//*[@id="taplc_location_detail_header_attractions_0"]/div[2]/div/div[2]/span[2]/text()'),
-            'Website url': extractUrl(),
+            'Website url': extractUrl(response.meta['url']), #pass the url from meta
         }
